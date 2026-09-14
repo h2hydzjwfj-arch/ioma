@@ -14,7 +14,7 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(RATES_FILE)) fs.writeFileSync(RATES_FILE, '{}', 'utf8');
 
 // Password is NOT stored in source code. This is a scrypt hash of the requested initial password.
-const PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || 'scrypt$16384$8$1$f24f13a968f6e58a78cd216c46483a84$835edb4d03af804dcbe31f3298c375c4b933e9227d4cda1827d0dbfdd32277ee';
+const PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || 'scrypt$16384$8$1$d95cadb5377340c29d2f47ed9f096364$1231ecf3e4a3f5f19c57c0133fb7858ba60e307e49931a31e7835148f8bf4da8';
 // If ADMIN_PASSWORD_HASH is not supplied, run: node tools/create-password-hash.js
 // The fallback above is intentionally invalid-looking and should be replaced before production.
 
