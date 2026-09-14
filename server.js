@@ -187,6 +187,44 @@ function makeToken() {
 }
 
 function auth(req, res, next) {
+  const header = req.headers.authorization || '';
+
+  if (!header.startsWith('Bearer ')) {
+    return res.status(401).json({
+      error: 'Требуется вход'
+    });
+  }
+
+  const token = header.slice(7);
+  const [body, sig] = token.split('.');
+
+  if (
+    !body ||
+    !sig ||
+    !timingSafe(sign(body), sig)
+  ) {
+    return res.status(401).json({
+      error: 'Недействительная сессия'
+    });
+  }
+
+  try {
+    const data = JSON.parse(
+      Buffer.from(body, 'base64url').toString()
+    );
+
+    if (data.exp < Date.now()) {
+      throw new Error();
+    }
+
+    req.user = { admin: true };
+    next();
+  } catch {
+    return res.status(401).json({
+      error: 'Сессия истекла'
+    });
+  }
+}
   const token = req.cookies?.auth;
 
   if (!token) {
