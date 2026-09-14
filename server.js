@@ -93,8 +93,12 @@ app.use('/api/login', rateLimit({windowMs:15*60*1000,max:10,standardHeaders:true
 app.post('/api/login',(req,res)=>{
   const password=typeof req.body?.password==='string'?req.body.password:'';
   if(!verifyPassword(password)) return res.status(401).json({error:'Неверный пароль'});
-  res.cookie('auth',makeToken(),{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'strict',maxAge:8*60*60*1000,path:'/'});
-  res.json({ok:true});
+res.cookie('auth', makeToken(), {
+  httpOnly: true,
+  secure: true,
+  sameSite: 'lax',
+  maxAge: 8 * 60 * 60 * 1000,
+  path: '/'
 });
 app.post('/api/logout',(req,res)=>{res.clearCookie('auth',{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'strict',path:'/'});res.json({ok:true});});
 app.get('/api/me',(req,res)=>{try{auth(req,res,()=>res.json({authenticated:true}));}catch{res.json({authenticated:false});}});
