@@ -107,6 +107,8 @@ app.post('/api/rates',auth,(req,res)=>{
 });
 app.delete('/api/rates/:id',auth,(req,res)=>{const rates=readRates();delete rates[req.params.id];writeRates(rates);res.json({ok:true});});
 app.get('/api/health',(req,res)=>res.json({ok:true}));
-app.use(express.static(path.join(__dirname,'public'),{extensions:['html']}));
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+app.get('/app.js', (req, res) => res.sendFile(path.join(__dirname, 'app.js')));
+app.get('/styles.css', (req, res) => res.sendFile(path.join(__dirname, 'styles.css')));
 app.use((req,res)=>res.status(404).send('Not found'));
 app.listen(PORT,()=>console.log(`Logistics app: http://localhost:${PORT}`));
