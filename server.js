@@ -1,23 +1,80 @@
 const express = require('express');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
 const app = express();
+
 app.set('trust proxy', 1);
+
 const PORT = Number(process.env.PORT || 3000);
-const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+
+const SESSION_SECRET =
+  process.env.SESSION_SECRET ||
+  crypto.randomBytes(32).toString('hex');
+
 const DATA_DIR = path.join(__dirname, 'data');
 const RATES_FILE = path.join(DATA_DIR, 'rates.json');
-fs.mkdirSync(DATA_DIR, { recursive: true });
-if (!fs.existsSync(RATES_FILE)) fs.writeFileSync(RATES_FILE, '{}', 'utf8');
 
-// Password is NOT stored in source code. This is a scrypt hash of the requested initial password.
-const PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || 'scrypt$16384$8$1$bd186dac2105a3d050c5f769e28d25a2$51e731def6ff02e823b43cb8cfce55adcad745c5c72935ce68d875f583096288';
-// If ADMIN_PASSWORD_HASH is not supplied, run: node tools/create-password-hash.js
-// The fallback above is intentionally invalid-looking and should be replaced before production.
+fs.mkdirSync(DATA_DIR, { recursive: true });
+
+if (!fs.existsSync(RATES_FILE)) {
+  fs.writeFileSync(RATES_FILE, '{}', 'utf8');
+}
+
+/* =========================
+   PASSWORD
+========================= */
+
+const PASSWORD_HASH =
+  process.env.ADMIN_PASSWORD_HASH ||
+  'scrypt$16384$8$1$bd186dac2105a3d050c5f769e28d25a2$51e731def6ff02e823b43cb8cfce55adcad745c5c72935ce68d875f583096288';
+
+function timingSafe(a, b) {
+  const aa = Buffer.from(a);
+  const bb = Buffer.from(b);
+
+  return (
+    aa.length === bb.length &&
+    crypto.timingSafeEqual(aa, bb)
+  );
+}
+
+function verifyPassword(password) {
+  const parts = String(PASSWORD_HASH).split('$');
+
+  if (parts[0] !== 'scrypt' || parts.length !== 6) {
+    return false;
+  }
+
+  const [, N, r, p, salt, hash] = parts;
+
+  try {
+    const derived = crypto
+      .scryptSync(
+        password,
+        salt,
+        Buffer.from(hash, 'hex').length,
+        {
+          N: Number(N),
+          r: Number(r),
+          p: Number(p)
+        }
+      )
+      .toString('hex');
+
+    return timingSafe(derived, hash);
+  } catch {
+    return false;
+  }
+}
+
+/* =========================
+   AGENTS
+========================= */
 
 const agents = [
   ['Multiwell','Kane','8 616 608 738 886','sales344@multiwell.net','www.multiwell.net',['Прямое Ж/Д','Авто','Море'],'Сборные груза'],
@@ -61,59 +118,292 @@ const agents = [
   ['ИП Полчанинов Кирилл Александрович','Кирилл','7 925 991 25 75','pka666@yandex.ru','',['Автовывоз с СВХ, машина 42-43 куб.м.'],'Россия, Москва, МО'],
   ['ИП Диана Куркина','Евгений','7 962 936 27 08','yevgeniy-kurkin@mail.ru','',['Автовывоз с СВХ, машина до 18 куб.м.'],'Россия, Москва, МО'],
   ['','Алексей','7 985 227 06 67','','',['Автовывоз с СВХ, более 20 куб.м.'],'Россия, Москва, МО']
-].map((a, i) => ({ id: `${slug(a[0] || 'agent')}-${i+1}`, name:a[0], contact:a[1], phone:a[2], email:a[3], site:a[4], transport:a[5], notes:a[6] }));
+].map((a, i) => ({
+  id: `${slug(a[0] || 'agent')}-${i + 1}`,
+  name: a[0],
+  contact: a[1],
+  phone: a[2],
+  email: a[3],
+  site: a[4],
+  transport: a[5],
+  notes: a[6]
+}));
 
-function slug(s){ return String(s).toLowerCase().replace(/[^a-zа-я0-9]+/gi,'-').replace(/^-|-$/g,'').slice(0,40) || 'agent'; }
-
-function readRates(){ try { return JSON.parse(fs.readFileSync(RATES_FILE,'utf8')); } catch { return {}; } }
-function writeRates(data){ const tmp=RATES_FILE+'.tmp'; fs.writeFileSync(tmp, JSON.stringify(data,null,2),'utf8'); fs.renameSync(tmp,RATES_FILE); }
-
-function timingSafe(a,b){ const aa=Buffer.from(a); const bb=Buffer.from(b); return aa.length===bb.length && crypto.timingSafeEqual(aa,bb); }
-function verifyPassword(password){
-  const parts = String(PASSWORD_HASH).split('$');
-if(parts[0] !== 'scrypt' || parts.length !== 6) return false;
-  const [,N,r,p,salt,hash] = parts;
-  try { const derived=crypto.scryptSync(password,salt,Buffer.from(hash,'hex').length,{N:Number(N),r:Number(r),p:Number(p)}).toString('hex'); return timingSafe(derived,hash); } catch { return false; }
-}
-function sign(payload){ return crypto.createHmac('sha256',SESSION_SECRET).update(payload).digest('base64url'); }
-function makeToken(){ const body=Buffer.from(JSON.stringify({exp:Date.now()+8*60*60*1000})).toString('base64url'); return body+'.'+sign(body); }
-function auth(req,res,next){
-  const token=req.cookies?.auth;
-  if(!token) return res.status(401).json({error:'Требуется вход'});
-  const [body,sig]=token.split('.');
-  if(!body || !sig || !timingSafe(sign(body),sig)) return res.status(401).json({error:'Недействительная сессия'});
-  try { const data=JSON.parse(Buffer.from(body,'base64url').toString()); if(data.exp<Date.now()) throw new Error(); req.user={admin:true}; next(); } catch { res.status(401).json({error:'Сессия истекла'}); }
+function slug(s) {
+  return String(s)
+    .toLowerCase()
+    .replace(/[^a-zа-я0-9]+/gi, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 40) || 'agent';
 }
 
-app.use(helmet({contentSecurityPolicy:{directives:{defaultSrc:["'self'"],styleSrc:["'self'","'unsafe-inline'"],scriptSrc:["'self'"],imgSrc:["'self'","data:"],connectSrc:["'self'"],objectSrc:["'none'"],baseUri:["'self'"],frameAncestors:["'none'"]}}}));
-app.use(express.json({limit:'50kb'}));
-app.use(require('cookie-parser')());
-app.use('/api/login', rateLimit({windowMs:15*60*1000,max:10,standardHeaders:true,legacyHeaders:false}));
+/* =========================
+   RATES
+========================= */
 
-app.post('/api/login',(req,res)=>{
-  const password=typeof req.body?.password==='string'?req.body.password:'';
-  if(!verifyPassword(password)) return res.status(401).json({error:'Неверный пароль'});
-res.cookie('auth', makeToken(), {
-  httpOnly: true,
-  secure: true,
-  sameSite: 'lax',
-  maxAge: 8 * 60 * 60 * 1000,
-  path: '/'
+function readRates() {
+  try {
+    return JSON.parse(
+      fs.readFileSync(RATES_FILE, 'utf8')
+    );
+  } catch {
+    return {};
+  }
+}
+
+function writeRates(data) {
+  const tmp = RATES_FILE + '.tmp';
+
+  fs.writeFileSync(
+    tmp,
+    JSON.stringify(data, null, 2),
+    'utf8'
+  );
+
+  fs.renameSync(tmp, RATES_FILE);
+}
+
+/* =========================
+   SESSIONS
+========================= */
+
+function sign(payload) {
+  return crypto
+    .createHmac('sha256', SESSION_SECRET)
+    .update(payload)
+    .digest('base64url');
+}
+
+function makeToken() {
+  const body = Buffer
+    .from(
+      JSON.stringify({
+        exp: Date.now() + 8 * 60 * 60 * 1000
+      })
+    )
+    .toString('base64url');
+
+  return body + '.' + sign(body);
+}
+
+function auth(req, res, next) {
+  const token = req.cookies?.auth;
+
+  if (!token) {
+    return res.status(401).json({
+      error: 'Требуется вход'
+    });
+  }
+
+  const [body, sig] = token.split('.');
+
+  if (
+    !body ||
+    !sig ||
+    !timingSafe(sign(body), sig)
+  ) {
+    return res.status(401).json({
+      error: 'Недействительная сессия'
+    });
+  }
+
+  try {
+    const data = JSON.parse(
+      Buffer.from(body, 'base64url').toString()
+    );
+
+    if (data.exp < Date.now()) {
+      throw new Error();
+    }
+
+    req.user = { admin: true };
+    next();
+  } catch {
+    res.status(401).json({
+      error: 'Сессия истекла'
+    });
+  }
+}
+
+/* =========================
+   MIDDLEWARE
+========================= */
+
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'"],
+        imgSrc: ["'self'", 'data:'],
+        connectSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        frameAncestors: ["'none'"]
+      }
+    }
+  })
+);
+
+app.use(express.json({ limit: '50kb' }));
+app.use(cookieParser());
+
+app.use(
+  '/api/login',
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false
+  })
+);
+
+/* =========================
+   LOGIN
+========================= */
+
+app.post('/api/login', (req, res) => {
+  const password =
+    typeof req.body?.password === 'string'
+      ? req.body.password
+      : '';
+
+  if (!verifyPassword(password)) {
+    return res.status(401).json({
+      error: 'Неверный пароль'
+    });
+  }
+
+  res.cookie('auth', makeToken(), {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    maxAge: 8 * 60 * 60 * 1000,
+    path: '/'
+  });
+
+  res.json({ ok: true });
 });
-app.post('/api/logout',(req,res)=>{res.clearCookie('auth',{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'strict',path:'/'});res.json({ok:true});});
-app.get('/api/me',(req,res)=>{try{auth(req,res,()=>res.json({authenticated:true}));}catch{res.json({authenticated:false});}});
-app.get('/api/agents',auth,(req,res)=>res.json(agents));
-app.get('/api/rates',auth,(req,res)=>res.json(readRates()));
-app.post('/api/rates',auth,(req,res)=>{
-  const {agentId,text}=req.body||{};
-  if(typeof agentId!=='string'||typeof text!=='string'||text.length>3000) return res.status(400).json({error:'Некорректная ставка'});
-  if(!agents.some(a=>a.id===agentId)) return res.status(404).json({error:'Агент не найден'});
-  const rates=readRates(); rates[agentId]={text:text.trim().slice(0,3000),updatedAt:new Date().toISOString()}; writeRates(rates); res.json({ok:true});
+
+app.post('/api/logout', (req, res) => {
+  res.clearCookie('auth', {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    path: '/'
+  });
+
+  res.json({ ok: true });
 });
-app.delete('/api/rates/:id',auth,(req,res)=>{const rates=readRates();delete rates[req.params.id];writeRates(rates);res.json({ok:true});});
-app.get('/api/health',(req,res)=>res.json({ok:true}));
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
-app.get('/app.js', (req, res) => res.sendFile(path.join(__dirname, 'app.js')));
-app.get('/styles.css', (req, res) => res.sendFile(path.join(__dirname, 'styles.css')));
-app.use((req,res)=>res.status(404).send('Not found'));
-app.listen(PORT,()=>console.log(`Logistics app: http://localhost:${PORT}`));
+
+/* =========================
+   API
+========================= */
+
+app.get('/api/me', (req, res) => {
+  try {
+    auth(req, res, () => {
+      res.json({ authenticated: true });
+    });
+  } catch {
+    res.json({ authenticated: false });
+  }
+});
+
+app.get('/api/agents', auth, (req, res) => {
+  res.json(agents);
+});
+
+app.get('/api/rates', auth, (req, res) => {
+  res.json(readRates());
+});
+
+app.post('/api/rates', auth, (req, res) => {
+  const { agentId, text } = req.body || {};
+
+  if (
+    typeof agentId !== 'string' ||
+    typeof text !== 'string' ||
+    text.length > 3000
+  ) {
+    return res.status(400).json({
+      error: 'Некорректная ставка'
+    });
+  }
+
+  if (!agents.some(a => a.id === agentId)) {
+    return res.status(404).json({
+      error: 'Агент не найден'
+    });
+  }
+
+  const rates = readRates();
+
+  rates[agentId] = {
+    text: text.trim().slice(0, 3000),
+    updatedAt: new Date().toISOString()
+  };
+
+  writeRates(rates);
+
+  res.json({ ok: true });
+});
+
+app.delete('/api/rates/:id', auth, (req, res) => {
+  const rates = readRates();
+
+  delete rates[req.params.id];
+
+  writeRates(rates);
+
+  res.json({ ok: true });
+});
+
+/* =========================
+   HEALTH
+========================= */
+
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true });
+});
+
+/* =========================
+   PAGES
+========================= */
+
+app.get('/', (req, res) => {
+  res.sendFile(
+    path.join(__dirname, 'index.html')
+  );
+});
+
+app.get('/app.js', (req, res) => {
+  res.sendFile(
+    path.join(__dirname, 'app.js')
+  );
+});
+
+app.get('/styles.css', (req, res) => {
+  res.sendFile(
+    path.join(__dirname, 'styles.css')
+  );
+});
+
+/* =========================
+   404
+========================= */
+
+app.use((req, res) => {
+  res.status(404).send('Not found');
+});
+
+/* =========================
+   START
+========================= */
+
+app.listen(PORT, () => {
+  console.log(
+    `Logistics app: http://localhost:${PORT}`
+  );
+});
