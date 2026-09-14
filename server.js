@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = Number(process.env.PORT || 3000);
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const DATA_DIR = path.join(__dirname, 'data');
@@ -14,7 +15,7 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(RATES_FILE)) fs.writeFileSync(RATES_FILE, '{}', 'utf8');
 
 // Password is NOT stored in source code. This is a scrypt hash of the requested initial password.
-const PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || 'scrypt$16384$8$1$d95cadb5377340c29d2f47ed9f096364$1231ecf3e4a3f5f19c57c0133fb7858ba60e307e49931a31e7835148f8bf4da8';
+const PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || 'scrypt$16384$8$1$9a98d1347bde9da7af33f112adeb652a$8ac611277ca076b9d476a314735e81599969004adc779355ba21196fddc93fd5';
 // If ADMIN_PASSWORD_HASH is not supplied, run: node tools/create-password-hash.js
 // The fallback above is intentionally invalid-looking and should be replaced before production.
 
