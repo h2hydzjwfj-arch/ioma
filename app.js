@@ -1,7 +1,17 @@
 let agents=[],rates={};
 const $=id=>document.getElementById(id);
 async function api(url,opts={}){const r=await fetch(url,{...opts,headers:{'Content-Type':'application/json',...(opts.headers||{})}});let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.error||'Ошибка');return d}
-async function boot(){try{await api('/api/agents');agents=await api('/api/agents');rates=await api('/api/rates');showApp();render();}catch{showLogin()}}
+async function boot(){
+  try {
+    agents = await api('/api/agents');
+    rates = await api('/api/rates');
+    showApp();
+    render();
+  } catch(err) {
+    showLogin();
+    $('loginError').textContent = err.message;
+  }
+}
 function showLogin(){$('login').hidden=false;$('app').hidden=true;$('password').focus()}
 function showApp(){$('login').hidden=true;$('app').hidden=false}
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();$('loginError').textContent='';try{await api('/api/login',{method:'POST',body:JSON.stringify({password:$('password').value})});$('password').value='';await boot()}catch(err){$('loginError').textContent=err.message}});
