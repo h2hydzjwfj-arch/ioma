@@ -1,0 +1,15 @@
+{
+  "name": "logistics-calculator-secure",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "helmet": "^8.1.0",
+    "express-rate-limit": "^7.5.0",
+    "cookie-parser": "^1.4.7"
+  }
+}
