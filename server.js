@@ -71,7 +71,7 @@ function writeRates(data){ const tmp=RATES_FILE+'.tmp'; fs.writeFileSync(tmp, JS
 function timingSafe(a,b){ const aa=Buffer.from(a); const bb=Buffer.from(b); return aa.length===bb.length && crypto.timingSafeEqual(aa,bb); }
 function verifyPassword(password){
   const parts = String(PASSWORD_HASH).split('$');
-  if(parts[0] !== 'scrypt' || parts.length !== 7) return false;
+if(parts[0] !== 'scrypt' || parts.length !== 6) return false;
   const [,N,r,p,salt,hash] = parts;
   try { const derived=crypto.scryptSync(password,salt,Buffer.from(hash,'hex').length,{N:Number(N),r:Number(r),p:Number(p)}).toString('hex'); return timingSafe(derived,hash); } catch { return false; }
 }
