@@ -1,7 +1,6 @@
 const express = require('express');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -213,7 +212,11 @@ function auth(req, res, next) {
       Buffer.from(body, 'base64url').toString()
     );
 
-    if (data.exp < Date.now()) {
+    if (
+      !data ||
+      typeof data.exp !== 'number' ||
+      data.exp < Date.now()
+    ) {
       throw new Error();
     }
 
@@ -221,43 +224,6 @@ function auth(req, res, next) {
     next();
   } catch {
     return res.status(401).json({
-      error: 'Сессия истекла'
-    });
-  }
-}
-  const token = req.cookies?.auth;
-
-  if (!token) {
-    return res.status(401).json({
-      error: 'Требуется вход'
-    });
-  }
-
-  const [body, sig] = token.split('.');
-
-  if (
-    !body ||
-    !sig ||
-    !timingSafe(sign(body), sig)
-  ) {
-    return res.status(401).json({
-      error: 'Недействительная сессия'
-    });
-  }
-
-  try {
-    const data = JSON.parse(
-      Buffer.from(body, 'base64url').toString()
-    );
-
-    if (data.exp < Date.now()) {
-      throw new Error();
-    }
-
-    req.user = { admin: true };
-    next();
-  } catch {
-    res.status(401).json({
       error: 'Сессия истекла'
     });
   }
@@ -285,7 +251,6 @@ app.use(
 );
 
 app.use(express.json({ limit: '50kb' }));
-app.use(cookieParser());
 
 app.use(
   '/api/login',
@@ -313,26 +278,18 @@ app.post('/api/login', (req, res) => {
     });
   }
 
-  res.cookie('auth', makeToken(), {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'lax',
-    maxAge: 8 * 60 * 60 * 1000,
-    path: '/'
-  });
+  const token = makeToken();
 
-  res.json({ ok: true });
+  res.json({
+    ok: true,
+    token
+  });
 });
 
 app.post('/api/logout', (req, res) => {
-  res.clearCookie('auth', {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'lax',
-    path: '/'
+  res.json({
+    ok: true
   });
-
-  res.json({ ok: true });
 });
 
 /* =========================
@@ -340,13 +297,11 @@ app.post('/api/logout', (req, res) => {
 ========================= */
 
 app.get('/api/me', (req, res) => {
-  try {
-    auth(req, res, () => {
-      res.json({ authenticated: true });
+  auth(req, res, () => {
+    res.json({
+      authenticated: true
     });
-  } catch {
-    res.json({ authenticated: false });
-  }
+  });
 });
 
 app.get('/api/agents', auth, (req, res) => {
@@ -385,7 +340,9 @@ app.post('/api/rates', auth, (req, res) => {
 
   writeRates(rates);
 
-  res.json({ ok: true });
+  res.json({
+    ok: true
+  });
 });
 
 app.delete('/api/rates/:id', auth, (req, res) => {
@@ -395,7 +352,9 @@ app.delete('/api/rates/:id', auth, (req, res) => {
 
   writeRates(rates);
 
-  res.json({ ok: true });
+  res.json({
+    ok: true
+  });
 });
 
 /* =========================
@@ -403,7 +362,9 @@ app.delete('/api/rates/:id', auth, (req, res) => {
 ========================= */
 
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true });
+  res.json({
+    ok: true
+  });
 });
 
 /* =========================
