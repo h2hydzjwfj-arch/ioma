@@ -14,7 +14,22 @@ async function boot(){
 }
 function showLogin(){$('login').hidden=false;$('app').hidden=true;$('password').focus()}
 function showApp(){$('login').hidden=true;$('app').hidden=false}
-$('loginForm').addEventListener('submit',async e=>{e.preventDefault();$('loginError').textContent='';try{await api('/api/login',{method:'POST',body:JSON.stringify({password:$('password').value})});$('password').value='';await boot()}catch(err){$('loginError').textContent=err.message}});
+$('loginForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  $('loginError').textContent='';
+
+  try {
+    await api('/api/login',{
+      method:'POST',
+      body:JSON.stringify({password:$('password').value})
+    });
+
+    await boot();
+    $('password').value='';
+  } catch(err) {
+    $('loginError').textContent=err.message;
+  }
+});
 $('logout').addEventListener('click',async()=>{await api('/api/logout',{method:'POST'});showLogin()});
 function render(){ $('agentCount').textContent=agents.length; const transports=[...new Set(agents.flatMap(a=>a.transport))].sort();$('transport').innerHTML='<option value="">Все виды транспорта</option>'+transports.map(x=>`<option>${esc(x)}</option>`).join('');$('rateAgent').innerHTML=agents.map(a=>`<option value="${esc(a.id)}">${esc(a.name||'Без названия')} — ${esc(a.contact||'')}</option>`).join('');drawAgents();loadRate() }
 function drawAgents(){const q=$('search').value.trim().toLowerCase(),t=$('transport').value;const list=agents.filter(a=>(!q||[a.name,a.contact,a.phone,a.email,a.site,a.notes,a.transport.join(' ')].join(' ').toLowerCase().includes(q))&&(!t||a.transport.includes(t)));$('agents').innerHTML=list.map(agentCard).join('')||'<div class="muted">Ничего не найдено.</div>'}
